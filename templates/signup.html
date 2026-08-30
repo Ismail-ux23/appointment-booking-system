@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{% block title %}Sign Up{% endblock %}
+{% block content %}
+<div class="auth-card">
+    <h1>Create Account</h1>
+    <form method="POST" id="signup-form">
+        <label>I am a...</label>
+        <div class="radio-row">
+            <label class="radio-label"><input type="radio" name="role" value="client" checked onclick="toggleBusinessField()"> Client (booking appointments)</label>
+            <label class="radio-label"><input type="radio" name="role" value="provider" onclick="toggleBusinessField()"> Provider (offering appointments)</label>
+        </div>
+
+        <label>Email</label>
+        <input type="email" name="email" required autofocus>
+
+        <label>Password</label>
+        <input type="password" name="password" required minlength="6">
+
+        <div id="business-name-field" style="display:none;">
+            <label>Business Name</label>
+            <input type="text" name="business_name" placeholder="e.g. Sunrise Dental Clinic">
+        </div>
+
+        <button type="submit" class="btn-primary">Sign Up</button>
+    </form>
+    <p class="auth-switch">Already have an account? <a href="{{ url_for('login') }}">Log in</a></p>
+</div>
+
+<script>
+function toggleBusinessField() {
+    const role = document.querySelector('input[name="role"]:checked').value;
+    document.getElementById('business-name-field').style.display = role === 'provider' ? 'block' : 'none';
+}
+</script>
+{% endblock %}

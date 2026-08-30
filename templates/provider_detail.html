@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% block title %}{{ provider.business_name }}{% endblock %}
+{% block content %}
+<h1>{{ provider.business_name }}</h1>
+<p class="muted">{{ provider.bio or "" }}</p>
+
+<section class="card">
+    <h2>1. Choose a service & date</h2>
+    <form method="GET" class="filter-bar">
+        <select name="service_id" required>
+            <option value="">Select a service...</option>
+            {% for s in services %}
+            <option value="{{ s.id }}" {% if selected_service and selected_service.id == s.id %}selected{% endif %}>
+                {{ s.name }} — {{ s.duration_minutes }} min — ${{ "%.2f"|format(s.price) }}
+            </option>
+            {% endfor %}
+        </select>
+        <input type="date" name="date" min="{{ today_str }}" max="{{ max_date_str }}" value="{{ selected_date_str }}" required>
+        <button type="submit" class="btn-primary">Show Available Times</button>
+    </form>
+</section>
+
+{% if selected_service and selected_date %}
+<section class="card">
+    <h2>2. Pick a time — {{ selected_date.strftime("%A, %B %d, %Y") }}</h2>
+    {% if slots %}
+    <div class="slot-grid">
+        {% for slot in slots %}
+        <form method="POST" action="{{ url_for('book_appointment', provider_id=provider.id) }}" class="slot-form">
+            <input type="hidden" name="service_id" value="{{ selected_service.id }}">
+            <input type="hidden" name="slot_start" value="{{ slot.isoformat() }}">
+            <button type="submit" class="slot-btn">{{ slot.strftime("%H:%M") }}</button>
+        </form>
+        {% endfor %}
+    </div>
+    {% else %}
+    <p class="muted">No open slots on this date. Try another day.</p>
+    {% endif %}
+</section>
+{% elif services|length == 0 %}
+<p class="muted">This provider hasn't added any services yet.</p>
+{% endif %}
+{% endblock %}

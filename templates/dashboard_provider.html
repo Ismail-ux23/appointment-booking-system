@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+{% block title %}Dashboard{% endblock %}
+{% block content %}
+<h1>{{ provider.business_name }}</h1>
+
+<div class="stat-grid">
+    <div class="stat-card">
+        <div class="stat-value">{{ todays_appointments|length }}</div>
+        <div class="stat-label">Today's Appointments</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-value">{{ upcoming_count }}</div>
+        <div class="stat-label">Total Upcoming</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-value">{{ service_count }}</div>
+        <div class="stat-label">Active Services</div>
+    </div>
+</div>
+
+<section class="card">
+    <h2>Today's Schedule</h2>
+    {% if todays_appointments %}
+    <table>
+        <thead><tr><th>Time</th><th>Client</th><th>Service</th><th>Actions</th></tr></thead>
+        <tbody>
+            {% for a in todays_appointments %}
+            <tr>
+                <td>{{ a.start_time.strftime("%H:%M") }} – {{ a.end_time.strftime("%H:%M") }}</td>
+                <td>{{ a.client.email }}</td>
+                <td>{{ a.service.name }}</td>
+                <td class="actions">
+                    <form method="POST" action="{{ url_for('complete_appointment', appointment_id=a.id) }}" class="inline-form">
+                        <button type="submit" class="btn-link">Mark Completed</button>
+                    </form>
+                    <form method="POST" action="{{ url_for('no_show_appointment', appointment_id=a.id) }}" class="inline-form">
+                        <button type="submit" class="btn-link btn-danger">No-Show</button>
+                    </form>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <p class="muted">Nothing scheduled for today.</p>
+    {% endif %}
+</section>
+
+{% if service_count == 0 %}
+<div class="flash flash-error">
+    You haven't added any services yet — clients can't book you until you do.
+    <a href="{{ url_for('provider_services') }}">Add a service</a>.
+</div>
+{% endif %}
+{% endblock %}

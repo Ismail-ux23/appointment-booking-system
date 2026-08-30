@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+{% block title %}Reschedule Appointment{% endblock %}
+{% block content %}
+<h1>Reschedule Appointment</h1>
+<p class="muted">
+    {{ appointment.service.name }} with {{ appointment.provider.business_name }} —
+    currently {{ appointment.start_time.strftime("%a, %b %d %Y — %H:%M") }}
+</p>
+
+<section class="card">
+    <h2>Pick a new date</h2>
+    <form method="GET" class="filter-bar">
+        <input type="date" name="date" min="{{ today_str }}" max="{{ max_date_str }}" value="{{ selected_date_str }}" required>
+        <button type="submit" class="btn-primary">Show Available Times</button>
+    </form>
+</section>
+
+{% if selected_date %}
+<section class="card">
+    <h2>Available times — {{ selected_date.strftime("%A, %B %d, %Y") }}</h2>
+    {% if slots %}
+    <div class="slot-grid">
+        {% for slot in slots %}
+        <form method="POST" class="slot-form">
+            <input type="hidden" name="slot_start" value="{{ slot.isoformat() }}">
+            <button type="submit" class="slot-btn">{{ slot.strftime("%H:%M") }}</button>
+        </form>
+        {% endfor %}
+    </div>
+    {% else %}
+    <p class="muted">No open slots on this date. Try another day.</p>
+    {% endif %}
+</section>
+{% endif %}
+
+<a href="{{ url_for('appointments') }}" class="btn-secondary">Cancel</a>
+{% endblock %}

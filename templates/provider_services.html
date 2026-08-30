@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% block title %}My Services{% endblock %}
+{% block content %}
+<h1>Services</h1>
+
+<form method="POST" class="form-card">
+    <label>Service Name</label>
+    <input type="text" name="name" placeholder="e.g. Haircut, 30-min Consultation" required>
+
+    <label>Duration (minutes)</label>
+    <input type="number" name="duration_minutes" min="5" step="5" value="30" required>
+
+    <label>Price ($)</label>
+    <input type="number" name="price" min="0" step="0.01" value="0">
+
+    <div class="form-actions">
+        <button type="submit" class="btn-primary">Add Service</button>
+    </div>
+</form>
+
+<table>
+    <thead><tr><th>Name</th><th>Duration</th><th>Price</th><th>Status</th><th>Actions</th></tr></thead>
+    <tbody>
+        {% for s in services %}
+        <tr>
+            <td>{{ s.name }}</td>
+            <td>{{ s.duration_minutes }} min</td>
+            <td>${{ "%.2f"|format(s.price) }}</td>
+            <td>{{ "Active" if s.is_active else "Inactive" }}</td>
+            <td class="actions">
+                <form method="POST" action="{{ url_for('toggle_service', service_id=s.id) }}" class="inline-form">
+                    <button type="submit" class="btn-link">{{ "Deactivate" if s.is_active else "Activate" }}</button>
+                </form>
+                <form method="POST" action="{{ url_for('delete_service', service_id=s.id) }}"
+                      onsubmit="return confirm('Delete {{ s.name }}?');" class="inline-form">
+                    <button type="submit" class="btn-link btn-danger">Delete</button>
+                </form>
+            </td>
+        </tr>
+        {% else %}
+        <tr><td colspan="5" class="muted">No services added yet.</td></tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% endblock %}

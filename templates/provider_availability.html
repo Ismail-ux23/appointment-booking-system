@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+{% block title %}My Availability{% endblock %}
+{% block content %}
+<h1>Weekly Availability</h1>
+<p class="muted">Define the recurring hours you're open for bookings. Clients will only see slots within these windows that aren't already taken.</p>
+
+<form method="POST" class="form-card">
+    <label>Day of Week</label>
+    <select name="day_of_week" required>
+        {% for i in range(7) %}
+        <option value="{{ i }}">{{ DAY_NAMES[i] }}</option>
+        {% endfor %}
+    </select>
+
+    <label>Start Time</label>
+    <input type="time" name="start_time" required>
+
+    <label>End Time</label>
+    <input type="time" name="end_time" required>
+
+    <div class="form-actions">
+        <button type="submit" class="btn-primary">Add Window</button>
+    </div>
+</form>
+
+<table>
+    <thead><tr><th>Day</th><th>Start</th><th>End</th><th>Actions</th></tr></thead>
+    <tbody>
+        {% for w in windows %}
+        <tr>
+            <td>{{ w.day_name }}</td>
+            <td>{{ w.start_time.strftime("%H:%M") }}</td>
+            <td>{{ w.end_time.strftime("%H:%M") }}</td>
+            <td>
+                <form method="POST" action="{{ url_for('delete_availability', availability_id=w.id) }}"
+                      onsubmit="return confirm('Remove this window?');" class="inline-form">
+                    <button type="submit" class="btn-link btn-danger">Remove</button>
+                </form>
+            </td>
+        </tr>
+        {% else %}
+        <tr><td colspan="4" class="muted">No availability set yet — clients won't see any open slots until you add some.</td></tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% endblock %}

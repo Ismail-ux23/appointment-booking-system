@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% block title %}Find a Provider{% endblock %}
+{% block content %}
+<h1>Find a Provider</h1>
+
+{% if providers %}
+<table>
+    <thead><tr><th>Business</th><th>Bio</th><th>Services</th><th></th></tr></thead>
+    <tbody>
+        {% for p in providers %}
+        <tr>
+            <td>{{ p.business_name }}</td>
+            <td>{{ p.bio or "—" }}</td>
+            <td>{{ p.services|selectattr("is_active")|list|length }} active</td>
+            <td><a href="{{ url_for('provider_detail', provider_id=p.id) }}" class="btn-secondary">View & Book</a></td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% else %}
+<p class="muted">No providers have signed up yet.</p>
+{% endif %}
+{% endblock %}

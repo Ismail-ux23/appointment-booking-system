@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+{% block title %}My Appointments{% endblock %}
+{% block content %}
+<h1>My Appointments</h1>
+
+{% if appointments %}
+<table>
+    <thead>
+        <tr>
+            {% if current_user.role == 'provider' %}
+            <th>Client</th>
+            {% else %}
+            <th>Provider</th>
+            {% endif %}
+            <th>Service</th><th>When</th><th>Status</th><th>Actions</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for a in appointments %}
+        <tr>
+            <td>{{ a.client.email if current_user.role == 'provider' else a.provider.business_name }}</td>
+            <td>{{ a.service.name }}</td>
+            <td>{{ a.start_time.strftime("%a, %b %d %Y — %H:%M") }}</td>
+            <td><span class="status-badge status-{{ a.status }}">{{ a.status }}</span></td>
+            <td class="actions">
+                {% if a.status == 'confirmed' %}
+                    <a href="{{ url_for('reschedule_appointment', appointment_id=a.id) }}">Reschedule</a>
+                    <form method="POST" action="{{ url_for('cancel_appointment', appointment_id=a.id) }}"
+                          onsubmit="return confirm('Cancel this appointment?');" class="inline-form">
+                        <button type="submit" class="btn-link btn-danger">Cancel</button>
+                    </form>
+                    {% if current_user.role == 'provider' %}
+                    <form method="POST" action="{{ url_for('complete_appointment', appointment_id=a.id) }}" class="inline-form">
+                        <button type="submit" class="btn-link">Complete</button>
+                    </form>
+                    <form method="POST" action="{{ url_for('no_show_appointment', appointment_id=a.id) }}" class="inline-form">
+                        <button type="submit" class="btn-link btn-danger">No-Show</button>
+                    </form>
+                    {% endif %}
+                {% else %}
+                    <span class="muted">—</span>
+                {% endif %}
+            </td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% else %}
+<p class="muted">No appointments yet.</p>
+{% endif %}
+{% endblock %}

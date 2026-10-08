@@ -1,4 +1,5 @@
 import os
+import math
 from datetime import datetime, timedelta, date as date_cls
 from functools import wraps
 from urllib.parse import quote_plus
@@ -52,7 +53,7 @@ def build_tidb_uri() -> str:
     return uri
 
 
-app.config["SQLALCHEMY_DATABASE_URI"] = build_tidb_uri()
+app.config["SQLALCHEMY_DATABASE_URI"] = os.environ.get("DATABASE_URL") or build_tidb_uri()
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 app.config["SQLALCHEMY_ENGINE_OPTIONS"] = {
     "pool_recycle": 280,
@@ -112,7 +113,7 @@ def inject_globals():
 # Slot generation
 # ---------------------------------------------------------------------------
 
-def get_available_slots(provider, service, target_date):
+def get_available_slots(provider, service, target_date, exclude_appointment_id=None):
     """
     Compute open, bookable start times for a given provider/service/date.
 
@@ -121,6 +122,10 @@ def get_available_slots(provider, service, target_date):
     remove any slot that overlaps an existing active (confirmed)
     appointment. Past slots on today's date are excluded.
     """
+    if (service.provider_id != provider.id or not service.is_active
+            or not 1 <= service.duration_minutes <= 1440
+            or not date_cls.today() <= target_date <= date_cls.today() + timedelta(days=60)):
+        return []
     day_of_week = target_date.weekday()  # Monday=0 ... Sunday=6
     windows = Availability.query.filter_by(
         provider_id=provider.id, day_of_week=day_of_week
@@ -131,12 +136,15 @@ def get_available_slots(provider, service, target_date):
     day_start = datetime.combine(target_date, datetime.min.time())
     day_end = day_start + timedelta(days=1)
 
-    existing_appointments = Appointment.query.filter(
+    existing_query = Appointment.query.filter(
         Appointment.provider_id == provider.id,
         Appointment.status.in_(ACTIVE_STATUSES),
         Appointment.start_time < day_end,
         Appointment.end_time > day_start,
-    ).all()
+    )
+    if exclude_appointment_id is not None:
+        existing_query = existing_query.filter(Appointment.id != exclude_appointment_id)
+    existing_appointments = existing_query.all()
 
     duration = timedelta(minutes=service.duration_minutes)
     now = datetime.now()
@@ -161,7 +169,15 @@ def get_available_slots(provider, service, target_date):
 
             cursor += duration
 
-    return sorted(slots)
+    return sorted(set(slots))
+
+
+def parse_slot_start(value):
+    """Only local naive datetimes match this single-timezone application's slots."""
+    start = datetime.fromisoformat(value)
+    if start.tzinfo is not None:
+        raise ValueError('Timezone offsets are not supported')
+    return start
 
 
 def slot_is_free(provider_id, start_time, end_time, exclude_appointment_id=None):
@@ -328,14 +344,20 @@ def provider_services():
         duration = request.form.get("duration_minutes", "").strip()
         price = request.form.get("price", "").strip()
 
-        if not name or not duration:
-            flash("Service name and duration are required.", "error")
+        try:
+            duration_minutes = int(duration)
+            amount = float(price or 0)
+            if (not 1 <= len(name) <= 150 or not 1 <= duration_minutes <= 1440
+                    or not math.isfinite(amount) or amount < 0):
+                raise ValueError
+        except (ValueError, OverflowError):
+            flash("Use a service name, a duration of 1–1440 minutes, and a finite nonnegative price.", "error")
         else:
             service = Service(
                 provider_id=provider.id,
                 name=name,
-                duration_minutes=int(duration),
-                price=float(price or 0),
+                duration_minutes=duration_minutes,
+                price=amount,
             )
             db.session.add(service)
             db.session.commit()
@@ -379,10 +401,13 @@ def provider_availability():
         end_time_str = request.form.get("end_time", "")
 
         try:
+            day_of_week = int(day_of_week)
+            if not 0 <= day_of_week <= 6:
+                raise ValueError
             start_t = datetime.strptime(start_time_str, "%H:%M").time()
             end_t = datetime.strptime(end_time_str, "%H:%M").time()
-        except ValueError:
-            flash("Please provide valid start and end times.", "error")
+        except (ValueError, TypeError):
+            flash("Please provide a valid weekday and start/end times.", "error")
             return redirect(url_for("provider_availability"))
 
         if start_t >= end_t:
@@ -391,7 +416,7 @@ def provider_availability():
 
         slot = Availability(
             provider_id=provider.id,
-            day_of_week=int(day_of_week),
+            day_of_week=day_of_week,
             start_time=start_t,
             end_time=end_t,
         )
@@ -441,7 +466,7 @@ def provider_detail(provider_id):
     selected_date = None
 
     if selected_service_id and selected_date_str:
-        selected_service = Service.query.filter_by(id=selected_service_id, provider_id=provider.id).first()
+        selected_service = Service.query.filter_by(id=selected_service_id, provider_id=provider.id, is_active=True).first()
         try:
             selected_date = datetime.strptime(selected_date_str, "%Y-%m-%d").date()
         except ValueError:
@@ -479,16 +504,16 @@ def book_appointment(provider_id):
         return redirect(url_for("provider_detail", provider_id=provider.id))
 
     try:
-        slot_start = datetime.fromisoformat(slot_start_str)
+        slot_start = parse_slot_start(slot_start_str)
     except ValueError:
         flash("Invalid time slot.", "error")
         return redirect(url_for("provider_detail", provider_id=provider.id))
 
-    slot_end = slot_start + timedelta(minutes=service.duration_minutes)
-
-    if slot_start < datetime.now():
-        flash("That time slot is in the past.", "error")
+    if slot_start not in get_available_slots(provider, service, slot_start.date()):
+        flash("Choose an available time within the provider's working hours and the next 60 days.", "error")
         return redirect(url_for("provider_detail", provider_id=provider.id))
+
+    slot_end = slot_start + timedelta(minutes=service.duration_minutes)
 
     if not slot_is_free(provider.id, slot_start, slot_end):
         flash("Sorry, that slot was just booked by someone else. Please pick another.", "error")
@@ -627,16 +652,16 @@ def reschedule_appointment(appointment_id):
     if request.method == "POST":
         slot_start_str = request.form.get("slot_start", "")
         try:
-            slot_start = datetime.fromisoformat(slot_start_str)
+            slot_start = parse_slot_start(slot_start_str)
         except ValueError:
             flash("Invalid time slot.", "error")
             return redirect(url_for("reschedule_appointment", appointment_id=appointment.id))
 
-        slot_end = slot_start + timedelta(minutes=service.duration_minutes)
-
-        if slot_start < datetime.now():
-            flash("That time slot is in the past.", "error")
+        if slot_start not in get_available_slots(provider, service, slot_start.date(), exclude_appointment_id=appointment.id):
+            flash("Choose an available time within the provider's working hours and the next 60 days.", "error")
             return redirect(url_for("reschedule_appointment", appointment_id=appointment.id))
+
+        slot_end = slot_start + timedelta(minutes=service.duration_minutes)
 
         if not slot_is_free(provider.id, slot_start, slot_end, exclude_appointment_id=appointment.id):
             flash("That slot is no longer available. Please pick another.", "error")
@@ -662,7 +687,7 @@ def reschedule_appointment(appointment_id):
         try:
             selected_date = datetime.strptime(selected_date_str, "%Y-%m-%d").date()
             if selected_date >= date_cls.today():
-                slots = get_available_slots(provider, service, selected_date)
+                slots = get_available_slots(provider, service, selected_date, exclude_appointment_id=appointment.id)
         except ValueError:
             selected_date = None
 

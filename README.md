@@ -2,7 +2,7 @@
 
 A Flask + TiDB appointment booking system with two roles — **providers**
 (businesses offering appointments) and **clients** (people booking them) —
-featuring real-time slot availability, conflict-free booking, rescheduling,
+featuring computed slot availability, booking validation, rescheduling,
 and a full appointment audit trail.
 
 TiDB is MySQL-compatible, so this connects via `PyMySQL`. If you don't set
@@ -17,8 +17,10 @@ file so it still runs out of the box.
 - Clients browse providers, pick a service + date, and see only genuinely
   open time slots — computed by subtracting existing bookings from the
   provider's availability windows
-- Double-booking is impossible: every booking and reschedule re-checks the
-  slot is still free right before committing (handles race conditions)
+- Booking and rescheduling accept only offered slots within working hours
+  and the next 60 days, with an overlap re-check before saving
+- Service durations and prices are validated; malformed weekdays and
+  offset-aware timestamps are rejected
 - Reschedule and cancel, both logged to an `AppointmentLog` audit trail
   (same pattern as the `StockLog` table in the Inventory Management project)
 - Providers can mark appointments completed or no-show
@@ -108,7 +110,8 @@ pip install -r requirements.txt
 5. `.env` is already in `.gitignore` — it won't get committed.
 
 If you skip this, the app falls back to a local `appointments.db` SQLite
-file automatically.
+file automatically. An optional `DATABASE_URL` environment variable overrides
+this configuration; tests use it to select an isolated SQLite database.
 
 ### 6. Run the app
 
@@ -145,10 +148,13 @@ Press `Ctrl+C` in the terminal.
   slices them into `service.duration_minutes`-sized chunks, then removes
   any chunk that overlaps an existing confirmed `Appointment`. Slots in
   the past (for today's date) are excluded automatically.
-- **Race-condition safety**: because two clients could theoretically try
-  to book the same slot at nearly the same time, the booking and
-  reschedule routes both re-verify the slot is free immediately before
-  writing to the database, not just when the slot list was first rendered.
+- **Booking validation and concurrency**: booking and rescheduling validate
+  membership in the generated availability list, then re-check overlaps
+  immediately before saving. This blocks off-hours/off-grid requests and
+  sequential conflicts. The check and insert are not an atomic reservation:
+  simultaneous transactions can still race. Database-level reservation
+  locking and concurrent integration tests are required before claiming
+  guaranteed double-booking prevention.
 - **Time zones**: this project uses naive local datetimes throughout (no
   timezone conversion). Fine for a single-timezone business; if you need
   multi-timezone support later, store everything in UTC and convert for
@@ -171,3 +177,23 @@ Press `Ctrl+C` in the terminal.
 - Recurring appointments (weekly session bookings)
 - Provider working-hours exceptions (holidays, days off)
 - Calendar (day/week grid) view instead of a slot list
+
+## Automated checks
+
+```bash
+pip install -r requirements-dev.txt
+python -m pytest -q
+```
+
+Tests use an isolated SQLite database and cover offered-slot validation,
+booking/rescheduling ownership, sequential conflicts, invalid service
+durations/prices/weekdays, inactive services, overlapping availability,
+and rejection of timezone-offset timestamps. GitHub Actions runs these
+checks on pushes and pull requests. Live TiDB and simultaneous bookings
+remain unverified.
+
+Slot generation returns no options for legacy services with invalid
+durations. Fix those records before accepting bookings. Rescheduling
+excludes the current appointment from overlap checks, so its original slot
+can be selected again. The application uses local naive datetimes and does
+not convert time zones.

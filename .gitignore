@@ -7,3 +7,6 @@ appointments.db
 .env
 *.pem
 instance/
+.venv/
+.pytest_cache/
+instance/
